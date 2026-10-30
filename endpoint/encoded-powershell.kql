@@ -1,0 +1,19 @@
+// PowerShell launched with encoded commands, with the payload decoded for review
+// MITRE ATT&CK: T1059.001 (PowerShell), T1027 (Obfuscated Files or Information)
+// Table: DeviceProcessEvents (Microsoft Defender XDR advanced hunting)
+let lookback = 7d;
+DeviceProcessEvents
+| where Timestamp > ago(lookback)
+| where FileName in~ ("powershell.exe", "pwsh.exe")
+| where ProcessCommandLine matches regex @"(?i)\s-e(n|nc|nco|ncod|ncode|ncoded|ncodedc|ncodedco|ncodedcom|ncodedcomm|ncodedcomma|ncodedcomman|ncodedcommand)?\s"
+| extend EncodedBlob = extract(@"(?i)\s-e\w*\s+([A-Za-z0-9+/=]{20,})", 1, ProcessCommandLine)
+| extend Decoded = replace_regex(base64_decode_tostring(EncodedBlob), @"\x00", "")
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    InitiatingProcessFileName,
+    ProcessCommandLine,
+    Decoded
+| order by Timestamp desc
+// Tuning: allow-list known management tools (SCCM, Intune scripts, RMM agents) by InitiatingProcessFileName
