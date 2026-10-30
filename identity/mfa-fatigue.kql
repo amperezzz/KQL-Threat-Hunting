@@ -1,0 +1,22 @@
+// MFA fatigue: repeated MFA push denials against one user
+// MITRE ATT&CK: T1621 (Multi-Factor Authentication Request Generation)
+// Table: SigninLogs (Microsoft Sentinel / Log Analytics)
+// 500121 = strong authentication failed (includes user-denied MFA prompts)
+let lookback = 1d;
+let minDenials = 5;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "500121"
+| extend Detail = tostring(Status.additionalDetails)
+| where Detail has_any ("denied", "declined", "fraud")
+| summarize
+    Denials = count(),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    SourceIPs = make_set(IPAddress, 10),
+    Locations = make_set(Location, 10),
+    Apps = make_set(AppDisplayName, 10)
+    by UserPrincipalName, bin(TimeGenerated, 1h)
+| where Denials >= minDenials
+| order by Denials desc
+// Follow-up: check whether a successful sign-in (ResultType == "0") from the same IPs followed the denials

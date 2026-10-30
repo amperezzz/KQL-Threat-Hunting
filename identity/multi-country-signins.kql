@@ -1,0 +1,22 @@
+// Successful sign-ins from several countries in a short window
+// MITRE ATT&CK: T1078 (Valid Accounts)
+// Table: SigninLogs (Microsoft Sentinel / Log Analytics)
+// Location holds the two-letter country code of the sign-in
+let lookback = 7d;
+let window = 4h;
+let minCountries = 2;
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where ResultType == "0"
+| where isnotempty(Location)
+| summarize
+    Countries = dcount(Location),
+    CountryList = make_set(Location, 10),
+    SourceIPs = make_set(IPAddress, 20),
+    Apps = make_set(AppDisplayName, 10),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated)
+    by UserPrincipalName, bin(TimeGenerated, window)
+| where Countries >= minCountries
+| order by Countries desc, LastSeen desc
+// Tuning: exclude known VPN or corporate egress IPs before alerting on this
